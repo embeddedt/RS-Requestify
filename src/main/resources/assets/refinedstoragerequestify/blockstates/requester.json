@@ -7,11 +7,6 @@
     }
   },
   "variants": {
-    "inventory": [
-      {
-        "transform": "forge:default-block"
-      }
-    ],
     "connected": {
       "true": {
         "textures": {
@@ -20,6 +15,11 @@
       },
       "false": {
       }
-    }
+    },
+    "inventory": [
+      {
+        "transform": "forge:default-block"
+      }
+    ]
   }
 }

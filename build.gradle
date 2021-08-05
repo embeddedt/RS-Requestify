@@ -7,129 +7,68 @@ buildscript {
         }
     }
     dependencies {
-        classpath "net.minecraftforge.gradle:ForgeGradle:2.3-SNAPSHOT"
-        classpath 'com.selesse:gradle-git-changelog:0.2.+'
-        classpath "gradle.plugin.com.matthewprenger:CurseGradle:1.1.0"
+        classpath "net.minecraftforge.gradle:ForgeGradle:4.1.+"
     }
 }
-plugins {
-    id "com.github.hierynomus.license" version "0.14.0"
-    id "com.matthewprenger.cursegradle" version "1.1.0"
-}
-apply plugin: 'net.minecraftforge.gradle.forge'
-apply plugin: 'com.selesse.git.changelog'
-apply plugin: 'java'
 
+apply plugin: 'java'
+apply plugin: 'net.minecraftforge.gradle'
 
 version = mod_version
 group = modGroup
 archivesBaseName = modBaseName
 
-String b = ""
-if (project.hasProperty("teamcity")) {
-    b = System.getenv("BUILD_NUMBER")
-}
+sourceCompatibility = targetCompatibility = "1.8"
 
-if (b == null || b == "") {
-    version = "${project.minecraft_version}-${project.mod_version}"
-} else {
-    version = "${project.minecraft_version}-${project.mod_version}-" + b
-}
-
-minecraft {
-    version = project.forgeVersion
-    runDir = "run"
-
-    // the mappings can be changed at any time, and must be in the following format.
-    // snapshot_YYYYMMDD   snapshot are built nightly.
-    // stable_#            stables are built at the discretion of the MCP team.
-    // Use non-default mappings at your own risk. they may not always work.
-    // simply re-run your setup task after changing the mappings to update your workspace.
-    mappings = project.mcpVersion
-    // makeObfSourceJar = false // an Srg named sources jar is made by default. uncomment this to disable.
-}
-
-repositories {
-    mavenCentral()
-    maven {
-        url "https://repo.raoulvdberge.com"
+sourceSets {
+    main {
+        output.resourcesDir = file('build/combined')
+        java.outputDir = file('build/combined')
     }
 }
 
 dependencies {
-    deobfCompile "refinedstorage:refinedstorage:1.6.14-375"
+    minecraft("net.minecraftforge:forge:1.12.2-14.23.5.2855")
+    compile("com.github.tth05:morerefinedstorage:v2.2.10") {
+        transitive = false
+    }
 }
+
+minecraft {
+    mappings(channel: "stable", version: "39-1.12")
+
+    runs {
+        client = {
+            properties("forge.logging.console.level": "debug")
+            properties("forge.logging.markers": "SCAN,REGISTRIES,REGISTRYDUMP")
+
+            singleInstance(true)
+            workingDirectory(project.file("run"))
+        }
+
+        server = {
+            properties("forge.logging.console.level": "debug")
+            properties("forge.logging.markers": "SCAN,REGISTRIES,REGISTRYDUMP")
+            singleInstance(true)
+            workingDirectory(project.file("run"))
+        }
+
+    }
+}
+
+repositories {
+    mavenCentral()
+    maven { url 'https://jitpack.io' }
+}
+
 
 processResources {
     // this will ensure that this task is redone when the versions change.
     inputs.property "version", project.version
-    inputs.property "mcversion", project.minecraft.version
 
     // replace stuff in mcmod.info, nothing else
-    from(sourceSets.main.resources.srcDirs) {
-        include "mcmod.info"
-
-        // replace version and mcversion
-        expand "version": project.version, "mcversion": project.minecraft.version
-    }
-
-    // copy everything else, thats not the mcmod.info
-    from(sourceSets.main.resources.srcDirs) {
-        exclude "mcmod.info"
-    }
-}
-
-changelog {
-    title = "RS: Requestify"
-    fileName = "CHANGELOG.md"
-    outputDirectory = file("$projectDir")
-    since = '0.0.0'
-    commitFormat = '%s (%an)'
-    markdown {
-        commitFormat = '* %s (%an)'
-    }
-    includeLines = {
-        !it.contains("Merge")
-    }
-    processLines = {
-        String input = it as String
-        if (input.contains('[ci skip] ')) {
-            input = input.minus('[ci skip] ')
-        }
-        input
-    }
-}
-
-tasks.curseforge.enabled =  project.hasProperty('curse_api')
-
-curseforge {
-    if (project.hasProperty('curse_api')) {
-        apiKey = project.curse_api
-    }
-    project {
-        id = '307788'
-        changelog = file('CHANGELOG.md')
-        changelogType = 'markdown'
-        releaseType = 'beta'
-
-        mainArtifact(jar){
-            relations {
-                requiredDependency 'refined-storage'
-            }
-        }
-        
-        addArtifact sourceJar
-    }
-}
-
-license {
-    header rootProject.file('HEADER')
-    include "**/*.java"
-    ext.year = Calendar.getInstance().get(Calendar.YEAR)
-    ext.name = 'Buuz135'
-    ext.mod= 'RS: Requestify'
-    ignoreFailures = true
-    mapping {
-        java='SLASHSTAR_STYLE'
+    from (sourceSets.main.resources.srcDirs) {
+        include("mcmod.info")
+        expand("version": version)
     }
 }

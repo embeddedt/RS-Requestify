@@ -29,28 +29,32 @@ import com.raoulvdberge.refinedstorage.apiimpl.network.node.NetworkNode;
 import com.raoulvdberge.refinedstorage.inventory.fluid.FluidInventory;
 import com.raoulvdberge.refinedstorage.inventory.item.ItemHandlerBase;
 import com.raoulvdberge.refinedstorage.inventory.listener.ListenerNetworkNode;
-import com.raoulvdberge.refinedstorage.tile.config.IType;
+import com.raoulvdberge.refinedstorage.tile.config.FilterConfig;
+import com.raoulvdberge.refinedstorage.tile.config.FilterType;
+import com.raoulvdberge.refinedstorage.tile.config.IRSFilterConfigProvider;
 import com.raoulvdberge.refinedstorage.util.StackUtils;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.fluids.FluidStack;
-import net.minecraftforge.items.IItemHandlerModifiable;
 
-public class NetworkNodeRequester extends NetworkNode implements IType {
+import javax.annotation.Nonnull;
+import java.util.List;
+
+public class NetworkNodeRequester extends NetworkNode implements IRSFilterConfigProvider {
 
     public static final String ID = "requester";
 
-    private static final String NBT_TYPE = "Type";
-    private static final String NBT_FLUID_FILTERS = "FluidFilter";
     private static final String NBT_AMOUNT = "Amount";
     private static final String NBT_MISSING = "MissingItems";
 
-    private ItemHandlerBase itemFilter = new ItemHandlerBase(1, new ListenerNetworkNode(this));
-    private FluidInventory fluidFilter = new FluidInventory(1, new ListenerNetworkNode(this));
-
-    private int type = IType.ITEMS;
+    private final FilterConfig config = new FilterConfig.Builder(this)
+            .allowedFilterTypeItemsAndFluids()
+            .filterTypeItems()
+            .filterSizeOne()
+            .compareDamageAndNbt()
+            .customFilterTypeSupplier((ft) -> world.isRemote ? FilterType.values()[TileRequester.TYPE.getValue()] : ft).build();
     private int amount = 0;
     private boolean isMissingItems = false;
     private ICraftingTask craftingTask = null;
@@ -60,13 +64,14 @@ public class NetworkNodeRequester extends NetworkNode implements IType {
     }
 
     @Override
-    public void update() {
-        super.update();
+    public void updateNetworkNode() {
+        super.updateNetworkNode();
         if (network == null) return;
         if (canUpdate() && ticks % 10 == 0 && (craftingTask == null || !network.getCraftingManager().getTasks().contains(craftingTask))) {
-            if (type == IType.ITEMS) {
-                ItemStack filter = itemFilter.getStackInSlot(0);
-                if (!filter.isEmpty()) {
+            if (this.config.isFilterTypeItem()) {
+                List<ItemStack> filterList = this.config.getItemFilters();
+                if (!filterList.isEmpty()) {
+                    ItemStack filter = filterList.get(0);
                     ItemStack current = network.extractItem(filter, amount, Action.SIMULATE);
                     if (current == null || current.isEmpty() || current.getCount() < amount) {
                         int count = current == null || current.isEmpty() ? amount : amount - current.getCount();
@@ -79,9 +84,10 @@ public class NetworkNodeRequester extends NetworkNode implements IType {
                     }
                 }
             }
-            if (type == IType.FLUIDS) {
-                FluidStack filter = fluidFilter.getFluid(0);
-                if (filter != null) {
+            if (this.config.isFilterTypeFluid()) {
+                List<FluidStack> filterList = this.config.getFluidFilters();
+                if (!filterList.isEmpty()) {
+                    FluidStack filter = filterList.get(0);
                     FluidStack current = network.extractFluid(filter, amount, Action.SIMULATE);
                     if (current == null || current.amount < amount) {
                         int count = current == null ? amount : amount - current.amount;
@@ -107,16 +113,6 @@ public class NetworkNodeRequester extends NetworkNode implements IType {
         return ID;
     }
 
-    @Override
-    public int getType() {
-        return world.isRemote ? TileRequester.TYPE.getValue() : type;
-    }
-
-    @Override
-    public void setType(int type) {
-        this.type = type;
-        markDirty();
-    }
 
     public int getAmount() {
         return amount;
@@ -124,7 +120,7 @@ public class NetworkNodeRequester extends NetworkNode implements IType {
 
     public void setAmount(int amount) {
         this.amount = amount;
-        markDirty();
+        markNetworkNodeDirty();
     }
 
     public boolean isMissingItems() {
@@ -132,19 +128,8 @@ public class NetworkNodeRequester extends NetworkNode implements IType {
     }
 
     @Override
-    public IItemHandlerModifiable getItemFilters() {
-        return itemFilter;
-    }
-
-    @Override
-    public FluidInventory getFluidFilters() {
-        return fluidFilter;
-    }
-
-    @Override
     public void read(NBTTagCompound tag) {
         super.read(tag);
-        StackUtils.readItems(itemFilter, 0, tag);
         if (tag.hasKey(NBT_AMOUNT)) {
             amount = tag.getInteger(NBT_AMOUNT);
         }
@@ -156,7 +141,6 @@ public class NetworkNodeRequester extends NetworkNode implements IType {
     @Override
     public NBTTagCompound write(NBTTagCompound tag) {
         super.write(tag);
-        StackUtils.writeItems(itemFilter, 0, tag);
         tag.setInteger(NBT_AMOUNT, amount);
         tag.setBoolean(NBT_MISSING, isMissingItems);
         return tag;
@@ -165,9 +149,6 @@ public class NetworkNodeRequester extends NetworkNode implements IType {
     @Override
     public NBTTagCompound writeConfiguration(NBTTagCompound tag) {
         super.writeConfiguration(tag);
-        tag.setInteger(NBT_TYPE, type);
-        StackUtils.writeItems(itemFilter, 0, tag);
-        tag.setTag(NBT_FLUID_FILTERS, fluidFilter.writeToNbt());
         tag.setInteger(NBT_AMOUNT, amount);
         tag.setBoolean(NBT_MISSING, isMissingItems);
         return tag;
@@ -176,13 +157,6 @@ public class NetworkNodeRequester extends NetworkNode implements IType {
     @Override
     public void readConfiguration(NBTTagCompound tag) {
         super.readConfiguration(tag);
-        if (tag.hasKey(NBT_TYPE)) {
-            type = tag.getInteger(NBT_TYPE);
-        }
-        StackUtils.readItems(itemFilter, 0, tag);
-        if (tag.hasKey(NBT_FLUID_FILTERS)) {
-            fluidFilter.readFromNbt(tag.getCompoundTag(NBT_FLUID_FILTERS));
-        }
         if (tag.hasKey(NBT_AMOUNT)) {
             amount = tag.getInteger(NBT_AMOUNT);
         }
@@ -190,4 +164,16 @@ public class NetworkNodeRequester extends NetworkNode implements IType {
             isMissingItems = tag.getBoolean(NBT_MISSING);
         }
     }
+
+    @Nonnull
+    @Override
+    public FilterConfig getConfig() {
+        return config;
+    }
+
+    @Override
+    public boolean hasConnectivityState() {
+        return true;
+    }
+
 }
